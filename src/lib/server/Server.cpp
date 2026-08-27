@@ -481,8 +481,15 @@ void Server::switchScreen(BaseClientProxy *dst, int32_t x, int32_t y, bool forSc
     if (m_enableClipboard) {
       // send the clipboard data to new active screen
       for (ClipboardID id = 0; id < kClipboardEnd; ++id) {
-        // Hackity hackity hack
-        if (m_clipboards[id].m_clipboard.marshall().size() > (m_maximumClipboardSize * 1024)) {
+        // m_clipboardData is the marshalled form of m_clipboard, so use it for
+        // the size check rather than marshalling again: with images in play that
+        // is a multi-megabyte copy on every screen crossing.
+        const auto size = m_clipboards[id].m_clipboardData.size();
+        if (size > (m_maximumClipboardSize * 1024)) {
+          LOG_WARN(
+              "not sending clipboard %d to \"%s\", size %zu KB exceeds limit: %zu KB", id, getName(m_active).c_str(),
+              size / 1024, m_maximumClipboardSize
+          );
           continue;
         }
         m_active->setClipboard(id, &m_clipboards[id].m_clipboard);
@@ -1441,7 +1448,17 @@ void Server::onClipboardChanged(const BaseClientProxy *sender, ClipboardID id, u
 
   std::string data = clipboard.m_clipboard.marshall();
   if (data.size() > m_maximumClipboardSize * 1024) {
-    LOG_WARN("not sending clipboard data, exceeds limit: %i KB", m_maximumClipboardSize);
+    LOG_WARN(
+        "not sending clipboard data, size %zu KB exceeds limit: %zu KB", data.size() / 1024, m_maximumClipboardSize
+    );
+    // drop the payload rather than leaving m_clipboard holding data that
+    // m_clipboardData does not describe, or the next screen switch would hand
+    // the rejected clipboard on regardless of the limit.
+    if (clipboard.m_clipboard.open(0)) {
+      clipboard.m_clipboard.empty();
+      clipboard.m_clipboard.close();
+    }
+    clipboard.m_clipboardData = clipboard.m_clipboard.marshall();
     return;
   }
 

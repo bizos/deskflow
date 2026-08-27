@@ -17,6 +17,8 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 
+#include <algorithm>
+
 Settings *Settings::instance()
 {
   static Settings m;
@@ -113,7 +115,11 @@ void Settings::upgradeSettings()
     if (oldKey == InternalConfig::Protocol) {
       m_settings->setValue(newKey, networkProtocolToOption(NetworkProtocol(m_settings->value(oldKey).toInt())));
     } else if (oldKey == InternalConfig::ClipboardSharingSize) {
-      m_settings->setValue(newKey, m_settings->value(oldKey).toUInt() / 1024);
+      // the legacy limit was too small for images: a single full screen
+      // screenshot travels as an uncompressed DIB and never fit. never migrate
+      // to a value below the current default, or images stay silently dropped.
+      const auto migrated = m_settings->value(oldKey).toUInt() / 1024;
+      m_settings->setValue(newKey, std::max(migrated, defaultValue(newKey).toUInt()));
     } else {
       m_settings->setValue(newKey, m_settings->value(oldKey));
     }
@@ -249,7 +255,7 @@ QVariant Settings::defaultValue(const QString &key)
     return 250;
 
   if (key == Server::ClipboardSize)
-    return 3; // 3 MiB
+    return 32; // 32 MiB, enough for a full screen screenshot as an uncompressed DIB
 
   return QVariant();
 }
