@@ -200,6 +200,12 @@ public:
     }
   }
 
+  void removeEventsFor(void *target) override
+  {
+    m_removedEventTargets.push_back(target);
+    std::erase_if(m_addedEvents, [target](const Event &e) { return e.getTarget() == target; });
+  }
+
   void waitForReady() const override
   {
   }
@@ -217,6 +223,11 @@ public:
   const std::vector<Event> &addedEvents() const
   {
     return m_addedEvents;
+  }
+
+  const std::vector<void *> &removedEventTargets() const
+  {
+    return m_removedEventTargets;
   }
 
 private:
@@ -237,6 +248,7 @@ private:
   int m_timerStorage = 0;
   std::map<HandlerKey, EventHandler> m_handlers;
   std::vector<Event> m_addedEvents;
+  std::vector<void *> m_removedEventTargets;
 };
 
 class TestServerProxy : public ServerProxy

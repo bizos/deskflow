@@ -20,6 +20,16 @@ private Q_SLOTS:
   void assembleAllowsDataAtExpectedSizeAndLimit();
   void assembleRejectsDataBeyondExpectedSize();
   void assembleRejectsExpectedSizeBeyondLimit();
+  void assembleSwallowsRestOfRefusedTransfer();
+  void assembleRejectsOrphanChunkWithoutDesync();
+
+  // full scale send/receive round trips
+  void roundTripSizes_data();
+  void roundTripSizes();
+  void roundTripTenConsecutiveFullScreenCopies();
+  void roundTripFullScreenImageThenText();
+  void roundTripInputMessagesInterleavedWithChunks();
+  void roundTripOverLimitKeepsInputAndLaterTransfersAlive();
 
 private:
   Log m_log;

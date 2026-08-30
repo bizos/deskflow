@@ -43,6 +43,11 @@ public:
     // do nothing
   }
 
+  void removeEventsFor(void *) override
+  {
+    // do nothing
+  }
+
   EventTypes registerType(const char *)
   {
     return EventTypes::Unknown;
