@@ -23,6 +23,14 @@ struct ClipboardChunkAssemblyState
 {
   size_t expectedSize = 0;
   bool active = false;
+  /**
+   * @brief This transfer was refused and its remaining chunks are being eaten
+   *
+   * Set when the declared size is over the local limit. The sender has already
+   * queued every chunk, so they still arrive; swallowing them keeps the stream
+   * in sync without buffering a payload we have no intention of keeping.
+   */
+  bool discarding = false;
 };
 
 class ClipboardChunk : public Chunk

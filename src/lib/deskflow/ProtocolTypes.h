@@ -175,7 +175,16 @@ enum class TransferState : uint8_t
   Started,    ///< Reception started
   InProgress, ///< Reception in progress
   Finished,   ///< Reception completed successfully
-  Error       ///< Reception failed with error
+  Error,      ///< Reception failed and the stream may no longer be in sync
+  /**
+   * @brief Payload refused, but the stream is still in sync
+   *
+   * The offending message was read in full, so the peer connection remains
+   * usable and only the clipboard payload is dropped. Receivers must not tear
+   * the connection down for this: doing so would also stop the cursor from
+   * switching to that screen, since a screen switch pushes the clipboard.
+   */
+  Rejected
 };
 
 /** @} */ // end of protocol_enums group

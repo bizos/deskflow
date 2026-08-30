@@ -109,6 +109,9 @@ void ClientProxy1_0::handleData()
 {
   // handle messages until there are no more.  first read message code.
   uint8_t code[4];
+  // [clipboard-debug] remember the previous message so a protocol error can
+  // report what came immediately before it.
+  uint8_t prevCode[4] = {'-', '-', '-', '-'};
   uint32_t n = getStream()->read(code, 4);
   while (n != 0) {
     // verify we got an entire code
@@ -126,6 +129,12 @@ void ClientProxy1_0::handleData()
             (CLOG_ERR "invalid message from client \"%s\": %c%c%c%c", getName().c_str(), code[0], code[1], code[2],
              code[3])
         );
+        // [clipboard-debug] temporary instrumentation. note this does NOT
+        // disconnect: it discards whatever is buffered and keeps the session.
+        LOG_DEBUG(
+            "[clipboard-debug] invalid message=%c%c%c%c (previous=%c%c%c%c), discarding buffered stream", code[0],
+            code[1], code[2], code[3], prevCode[0], prevCode[1], prevCode[2], prevCode[3]
+        );
         // not possible to determine message boundaries
         // read the whole stream to discard unkonwn data
         while (getStream()->read(nullptr, 4))
@@ -133,11 +142,17 @@ void ClientProxy1_0::handleData()
       }
     } catch (const BadClientException &e) {
       LOG_ERR("protocol error from client \"%s\": %s", getName().c_str(), e.what());
+      // [clipboard-debug] temporary instrumentation
+      LOG_DEBUG(
+          "[clipboard-debug] protocol error after message=%c%c%c%c (previous=%c%c%c%c)", code[0], code[1], code[2],
+          code[3], prevCode[0], prevCode[1], prevCode[2], prevCode[3]
+      );
       disconnect();
       return;
     }
 
     // next message
+    std::memcpy(prevCode, code, 4);
     n = getStream()->read(code, 4);
   }
 

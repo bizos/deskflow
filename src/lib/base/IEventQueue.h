@@ -139,6 +139,15 @@ public:
   */
   virtual void removeHandlers(void *target) = 0;
 
+  //! Discard any queued events aimed at a target
+  /*!
+  Neutralises every event already sitting in the queue for \p target and frees
+  its data. Call this when \p target is about to be destroyed: removing the
+  handler alone is not enough, because the next object allocated at the same
+  address will register a handler and inherit the dead object's backlog.
+  */
+  virtual void removeEventsFor(void *target) = 0;
+
   //! Wait for event queue to become ready
   /*!
   Blocks on the current thread until the event queue is ready for events to

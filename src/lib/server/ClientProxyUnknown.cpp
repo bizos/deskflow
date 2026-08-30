@@ -197,7 +197,15 @@ void ClientProxyUnknown::handleData()
   try {
     // limit the maximum length of the hello
     if (uint32_t n = m_stream->getSize(); n > kMaxHelloLength) {
-      LOG_VERBOSE("hello reply too long");
+      // [clipboard-debug] temporary: report what actually arrived. a stale
+      // clipboard chunk flushed into a fresh connection shows up here as a
+      // ~512 KiB packet whose first four bytes are "DCLP" rather than a hello.
+      uint8_t peek[4] = {0, 0, 0, 0};
+      m_stream->read(peek, 4);
+      LOG_DEBUG(
+          "[clipboard-debug] hello reply too long: packet=%u bytes limit=%u firstBytes=%c%c%c%c", n, kMaxHelloLength,
+          peek[0], peek[1], peek[2], peek[3]
+      );
       throw BadClientException();
     }
 

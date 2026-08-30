@@ -47,6 +47,7 @@ public:
   void addHandler(EventTypes type, void *target, const EventHandler &handler) override;
   void removeHandler(EventTypes type, void *target) override;
   void removeHandlers(void *target) override;
+  void removeEventsFor(void *target) override;
   void *getSystemTarget() override;
   void waitForReady() const override;
 

@@ -394,6 +394,34 @@ void Client::sendClipboard(ClipboardID id)
   if (m_timeClipboard[id] == 0 || clipboard.getTime() != m_timeClipboard[id]) {
     // marshall the data
     std::string data = clipboard.marshall();
+
+    // [clipboard-debug] temporary instrumentation: per format sizes, plus the
+    // image geometry decoded from the BMP INFOHEADER when a bitmap is present.
+    // the Bitmap format is an uncompressed BI_RGB DIB starting at the 40 byte
+    // INFOHEADER, so width/height/bpp sit at fixed offsets.
+    for (auto f : {IClipboard::Format::Text, IClipboard::Format::HTML, IClipboard::Format::Bitmap}) {
+      if (!clipboard.has(f)) {
+        continue;
+      }
+      const std::string formatData = clipboard.get(f);
+      const char *name = (f == IClipboard::Format::Text) ? "Text" : (f == IClipboard::Format::HTML) ? "HTML" : "Bitmap";
+      if (f == IClipboard::Format::Bitmap && formatData.size() >= 16) {
+        int32_t w = 0;
+        int32_t h = 0;
+        uint16_t bpp = 0;
+        std::memcpy(&w, formatData.data() + 4, 4);
+        std::memcpy(&h, formatData.data() + 8, 4);
+        std::memcpy(&bpp, formatData.data() + 14, 2);
+        LOG_DEBUG("[clipboard-debug] local format=%s bytes=%zu image=%dx%d bpp=%u", name, formatData.size(), w, h, bpp);
+      } else {
+        LOG_DEBUG("[clipboard-debug] local format=%s bytes=%zu", name, formatData.size());
+      }
+    }
+    LOG_DEBUG(
+        "[clipboard-debug] marshalled clipboard %d payload=%zu bytes, sendLimit=%zu bytes (%zu KB)", id, data.size(),
+        m_maximumClipboardSize * 1024, m_maximumClipboardSize
+    );
+
     if (data.size() > m_maximumClipboardSize * 1024) {
       LOG_WARN(
           "not sending clipboard data, size %zu KB exceeds limit: %zu KB", data.size() / 1024, m_maximumClipboardSize

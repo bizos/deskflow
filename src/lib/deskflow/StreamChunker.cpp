@@ -21,11 +21,19 @@ void StreamChunker::sendClipboard(
   std::string dataSize = QString::number(size).toStdString();
   ClipboardChunk *sizeMessage = ClipboardChunk::start(id, sequence, dataSize);
 
+  // [clipboard-debug] temporary instrumentation
+  const size_t chunkCount = (size + g_chunkSize - 1) / g_chunkSize;
+  LOG_DEBUG(
+      "[clipboard-debug] send begin id=%d seq=%u total=%zu chunkSize=%zu chunkCount=%zu declaredHeader=%s", id,
+      sequence, size, g_chunkSize, chunkCount, dataSize.c_str()
+  );
+
   events->addEvent(Event(EventTypes::ClipboardSending, eventTarget, sizeMessage));
 
   // send clipboard chunk with a fixed size
   size_t sentLength = 0;
   size_t chunkSize = g_chunkSize;
+  size_t chunkIndex = 0;
 
   while (true) {
     // make sure we don't read too much from the mock data.
@@ -35,6 +43,11 @@ void StreamChunker::sendClipboard(
 
     std::string chunk(data.substr(sentLength, chunkSize).data(), chunkSize);
     ClipboardChunk *dataChunk = ClipboardChunk::data(id, sequence, chunk);
+
+    // [clipboard-debug] temporary instrumentation
+    LOG_DEBUG(
+        "[clipboard-debug] send chunk %zu/%zu offset=%zu len=%zu", ++chunkIndex, chunkCount, sentLength, chunkSize
+    );
 
     events->addEvent(Event(EventTypes::ClipboardSending, eventTarget, dataChunk));
 
@@ -49,5 +62,12 @@ void StreamChunker::sendClipboard(
 
   events->addEvent(Event(EventTypes::ClipboardSending, eventTarget, end));
 
+  // [clipboard-debug] note this only means the chunks were QUEUED as events,
+  // not that they reached the wire. the queue drains later, one chunk per
+  // event loop iteration.
+  LOG_DEBUG(
+      "[clipboard-debug] send queued id=%d seq=%u queuedBytes=%zu chunks=%zu (queued, not yet on the wire)", id,
+      sequence, sentLength, chunkIndex
+  );
   LOG_DEBUG("sent clipboard size=%d", sentLength);
 }

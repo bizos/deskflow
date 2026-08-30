@@ -56,6 +56,11 @@ ServerProxy::~ServerProxy()
   setKeepAliveRate(-1.0);
   m_events->removeHandler(EventTypes::StreamInputReady, m_stream->getEventTarget());
   m_events->removeHandler(EventTypes::ClipboardSending, this);
+  // a large clipboard is queued as one event per 512 KiB chunk, so a connection
+  // that drops mid-transfer leaves a backlog behind. drop it: the next
+  // ServerProxy can land on this very address and would otherwise flush those
+  // chunks into a brand new connection, wrecking its handshake.
+  m_events->removeEventsFor(this);
 }
 
 void ServerProxy::resetKeepAliveAlarm()
@@ -81,6 +86,9 @@ void ServerProxy::handleData()
 {
   // handle messages until there are no more.  first read message code.
   uint8_t code[4];
+  // [clipboard-debug] remember the previous message so a protocol error can
+  // report what came immediately before it.
+  uint8_t prevCode[4] = {'-', '-', '-', '-'};
   uint32_t n = m_stream->read(code, 4);
   while (n != 0) {
     // verify we got an entire code
@@ -111,12 +119,18 @@ void ServerProxy::handleData()
       }
     } catch (const BadClientException &e) {
       LOG_ERR("protocol error from server: %s", e.what());
+      // [clipboard-debug] temporary instrumentation
+      LOG_DEBUG(
+          "[clipboard-debug] protocol error after message=%c%c%c%c (previous=%c%c%c%c)", code[0], code[1], code[2],
+          code[3], prevCode[0], prevCode[1], prevCode[2], prevCode[3]
+      );
       ProtocolUtil::writef(m_stream, kMsgEBad);
       requestDisconnect("invalid message from server");
       return;
     }
 
     // next message
+    std::memcpy(prevCode, code, 4);
     n = m_stream->read(code, 4);
   }
 
@@ -514,6 +528,10 @@ void ServerProxy::enter()
   uint32_t seqNum;
   ProtocolUtil::readf(m_stream, kMsgCEnter + 4, &x, &y, &seqNum, &mask);
   LOG_VERBOSE("recv enter, %d,%d %d %04x", x, y, seqNum, mask);
+  // [clipboard-debug] temporary instrumentation: shows whether the cursor
+  // actually reached this client, and at which enter sequence number. compare
+  // the timestamp with any clipboard error that follows.
+  LOG_DEBUG("[clipboard-debug] recv ENTER %d,%d seq=%u mask=%04x", x, y, seqNum, mask);
 
   // discard old compressed mouse motion, if any
   m_compressMouse = false;
@@ -564,7 +582,23 @@ void ServerProxy::setClipboard()
     m_clipboardDataCached.shrink_to_fit();
 
     LOG_INFO("clipboard was updated");
+  } else if (r == TransferState::Rejected) {
+    // the message was read in full, so the stream is still in sync: drop the
+    // payload and keep the connection. tearing it down here would also stop the
+    // cursor from crossing, because a screen switch pushes the clipboard.
+    m_clipboardDataCached.clear();
+    m_clipboardDataCached.shrink_to_fit();
+    LOG_WARN(
+        "clipboard from server was not applied, receive limit is %zu bytes",
+        m_client->getMaximumClipboardReceiveSizeBytes()
+    );
   } else if (r == TransferState::Error) {
+    // the stream is no longer aligned on a message boundary, so nothing after
+    // this point can be parsed: the connection really does have to go.
+    LOG_DEBUG(
+        "[clipboard-debug] disconnecting because the clipboard desynced the stream: localReceiveLimit=%zu bytes",
+        m_client->getMaximumClipboardReceiveSizeBytes()
+    );
     requestDisconnect("invalid clipboard data from server");
   }
 }

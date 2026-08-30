@@ -295,6 +295,44 @@ void EventQueue::removeHandlers(void *target)
   }
 }
 
+void EventQueue::removeEventsFor(void *target)
+{
+  std::scoped_lock lock{m_mutex};
+
+  // the buffer only holds event IDs, so the queued IDs cannot be pulled out
+  // from under it. instead blank each matching event in place: the ID stays
+  // mapped, and when the buffer eventually yields it removeEvent() hands back a
+  // harmless empty event that dispatches to nobody.
+  size_t discarded = 0;
+  for (auto &[id, event] : m_events) {
+    if (event.getTarget() != target) {
+      continue;
+    }
+    Event::deleteData(event);
+    event = Event();
+    ++discarded;
+  }
+
+  if (discarded > 0) {
+    LOG_DEBUG("discarded %zu queued event(s) for a target being destroyed", discarded);
+  }
+
+  // events added before the queue was ready are still waiting in m_pending
+  if (!m_pending.empty()) {
+    std::queue<Event> kept;
+    while (!m_pending.empty()) {
+      Event event = std::move(m_pending.front());
+      m_pending.pop();
+      if (event.getTarget() == target) {
+        Event::deleteData(event);
+      } else {
+        kept.push(std::move(event));
+      }
+    }
+    m_pending.swap(kept);
+  }
+}
+
 std::optional<EventQueue::EventHandler> EventQueue::getHandler(EventTypes type, void *target) const
 {
   std::scoped_lock lock{m_mutex};

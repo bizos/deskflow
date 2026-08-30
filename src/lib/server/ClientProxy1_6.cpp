@@ -29,6 +29,9 @@ ClientProxy1_6::ClientProxy1_6(const std::string &name, deskflow::IStream *strea
 ClientProxy1_6::~ClientProxy1_6()
 {
   m_events->removeHandler(EventTypes::ClipboardSending, this);
+  // drop any chunks still queued for this proxy, so the next proxy allocated at
+  // this address does not inherit them (see ServerProxy::~ServerProxy)
+  m_events->removeEventsFor(this);
 }
 
 void ClientProxy1_6::setClipboard(ClipboardID id, const IClipboard *clipboard)
@@ -43,6 +46,10 @@ void ClientProxy1_6::setClipboard(ClipboardID id, const IClipboard *clipboard)
 
     size_t size = data.size();
     LOG_DEBUG("sending clipboard %d to \"%s\"", id, getName().c_str());
+    // [clipboard-debug] temporary instrumentation: the server pushes this to
+    // the client right after the enter message during a screen switch, so an
+    // oversize payload here is what the client reacts to.
+    LOG_DEBUG("[clipboard-debug] server sending clipboard %d to \"%s\" payload=%zu bytes", id, getName().c_str(), size);
 
     StreamChunker::sendClipboard(data, size, id, 0, m_events, this);
   }
@@ -77,7 +84,14 @@ bool ClientProxy1_6::recvClipboard()
     info->m_id = id;
     info->m_sequenceNumber = seq;
     m_events->addEvent(Event(EventTypes::ClipboardChanged, getEventTarget(), info));
+  } else if (r == TransferState::Rejected) {
+    // payload dropped, but the message was read in full so the stream is still
+    // in sync and the client stays connected
+    m_clipboardDataCached.clear();
+    m_clipboardDataCached.shrink_to_fit();
+    LOG_WARN("clipboard from \"%s\" was not applied, connection kept", getName().c_str());
   } else if (r == TransferState::Error) {
+    // genuine desync: nothing after this point can be parsed
     return false;
   }
 
